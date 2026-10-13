@@ -32,10 +32,28 @@ export interface CoachContextType {
   diagnoses: Diagnosis[];
   recoveryState: RecoveryModeState;
   weeklyComparisons: WeeklyComparison[];
-  activeTab: 'overview' | 'planner' | 'execution' | 'diagnosis' | 'learning' | 'methodologies';
+  activeTab:
+    | 'overview'
+    | 'planner'
+    | 'execution'
+    | 'diagnosis'
+    | 'learning'
+    | 'methodologies'
+    | 'playbook'
+    | 'metrics';
 
   // Actions
-  setActiveTab: (tab: 'overview' | 'planner' | 'execution' | 'diagnosis' | 'learning' | 'methodologies') => void;
+  setActiveTab: (
+    tab:
+      | 'overview'
+      | 'planner'
+      | 'execution'
+      | 'diagnosis'
+      | 'learning'
+      | 'methodologies'
+      | 'playbook'
+      | 'metrics'
+  ) => void;
   setActiveDay: (day: DayOfWeek) => void;
   setGoalAndBreakdown: (title: string, problemStatement?: string, category?: string) => void;
   updateCapacityInputs: (statedWeeklyMinutes: number, commitmentMinutes: number) => void;
@@ -119,7 +137,14 @@ export const CoachProvider = ({ children }: { children: ReactNode }) => {
     () => getSavedData()?.weeklyComparisons || []
   );
   const [activeTab, setActiveTab] = useState<
-    'overview' | 'planner' | 'execution' | 'diagnosis' | 'learning' | 'methodologies'
+    | 'overview'
+    | 'planner'
+    | 'execution'
+    | 'diagnosis'
+    | 'learning'
+    | 'methodologies'
+    | 'playbook'
+    | 'metrics'
   >('overview');
 
   // Save to LocalStorage on changes

@@ -9,6 +9,8 @@ import { ExecutionView } from '../components/ExecutionView';
 import { DiagnosisView } from '../components/DiagnosisView';
 import { LearningView } from '../components/LearningView';
 import { MethodologyView } from '../components/MethodologyView';
+import { PlaybookView } from '../components/PlaybookView';
+import { MetricsView } from '../components/MetricsView';
 
 function DashboardContent() {
   const { activeTab } = useCoach();
@@ -23,6 +25,8 @@ function DashboardContent() {
         {activeTab === 'execution' && <ExecutionView />}
         {activeTab === 'diagnosis' && <DiagnosisView />}
         {activeTab === 'learning' && <LearningView />}
+        {activeTab === 'playbook' && <PlaybookView />}
+        {activeTab === 'metrics' && <MetricsView />}
         {activeTab === 'methodologies' && <MethodologyView />}
       </main>
 
