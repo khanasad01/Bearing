@@ -5,6 +5,8 @@ import React from 'react';
 interface InputProps {
   /** Input identifier for an associated label */
   id?: string;
+  /** Form field name */
+  name?: string;
   /** Input type (text, number, email, etc.) */
   type?: string;
   /** Label for the input */
@@ -39,6 +41,7 @@ interface InputProps {
  */
 export default function Input({
   id,
+  name,
   type = 'text',
   label,
   placeholder = '',
@@ -86,6 +89,7 @@ export default function Input({
       {as === 'textarea' ? (
         <textarea
           id={id}
+          name={name}
           placeholder={placeholder}
           value={value}
           onChange={onChange}
@@ -97,6 +101,7 @@ export default function Input({
       ) : (
         <input
           id={id}
+          name={name}
           type={type}
           min={min}
           placeholder={placeholder}

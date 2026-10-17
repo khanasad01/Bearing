@@ -1,9 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import type { FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { loadOnboardingIntake, saveOnboardingIntake, createEmptyOnboardingIntake } from '@/lib/onboarding-storage';
 import { loadWeeklyPlan, saveWeeklyPlan, createEmptyWeeklyPlan, isValidWeeklyPlan } from '@/lib/weekly-plan-storage';
+import type { WeeklyPlanTask } from '@/lib/weekly-plan-storage';
 import { computeCapacity, CapacityInputs, CapacityOutput } from '@/engine/capacity';
 import Link from 'next/link';
 
@@ -26,6 +28,8 @@ export default function PlanPage() {
   const [capacity, setCapacity] = useState<number | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [activeStep, setActiveStep] = useState<'intake' | 'capacity' | 'plan'>('intake');
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [taskSuccess, setTaskSuccess] = useState<string | null>(null);
 
   // Capacity step state
   const [capacityInputs, setCapacityInputs] = useState<CapacityInputs>({
@@ -49,11 +53,17 @@ export default function PlanPage() {
         const storedWeeklyPlan = loadWeeklyPlan();
         if (storedWeeklyPlan && isValidWeeklyPlan(storedWeeklyPlan)) {
           setWeeklyPlan(storedWeeklyPlan);
+          if (storedWeeklyPlan.tasks.length > 0) {
+            setActiveStep('plan');
+          }
         } else {
           // Create new plan linked to intake if intake exists
           const newPlan = createEmptyWeeklyPlan(
             storedIntake ? crypto.randomUUID() : undefined
           );
+          if (!saveWeeklyPlan(newPlan)) {
+            setTaskError('Unable to save your weekly plan. Please try again.');
+          }
           setWeeklyPlan(newPlan);
         }
       } catch (error) {
@@ -73,12 +83,62 @@ export default function PlanPage() {
     }
   }, [intake]);
 
-  // Save weekly plan when it changes
-  useEffect(() => {
-    if (weeklyPlan) {
-      saveWeeklyPlan(weeklyPlan);
+  const handleAddTask = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    setTaskError(null);
+    setTaskSuccess(null);
+
+    if (!weeklyPlan) {
+      setTaskError('Your weekly plan is still loading. Please try again.');
+      return;
     }
-  }, [weeklyPlan]);
+
+    const formData = new FormData(event.currentTarget);
+    const titleValue = formData.get('task-title');
+    const descriptionValue = formData.get('task-description');
+    const title = typeof titleValue === 'string' ? titleValue.trim() : '';
+    const description = typeof descriptionValue === 'string' ? descriptionValue.trim() : '';
+    const estimatedDurationMinutes = Number(formData.get('task-duration'));
+    const priority = formData.get('task-priority');
+    const plannedDay = Number(formData.get('task-day'));
+
+    if (
+      !title ||
+      !Number.isInteger(estimatedDurationMinutes) ||
+      estimatedDurationMinutes < 1 ||
+      (priority !== 'high' && priority !== 'medium' && priority !== 'low') ||
+      !Number.isInteger(plannedDay) ||
+      plannedDay < 0 ||
+      plannedDay > 6
+    ) {
+      setTaskError('Enter a task title, a positive whole-minute duration, a priority, and a day.');
+      return;
+    }
+
+    const task: WeeklyPlanTask = {
+      id: crypto.randomUUID(),
+      title,
+      description: description || undefined,
+      estimatedDurationMinutes,
+      priority,
+      plannedDay,
+    };
+
+    const nextPlan = {
+      ...weeklyPlan,
+      tasks: [...weeklyPlan.tasks, task],
+      updatedAt: new Date().toISOString(),
+    };
+
+    if (!saveWeeklyPlan(nextPlan)) {
+      setTaskError('Unable to save your weekly plan. Please try again.');
+      return;
+    }
+
+    setWeeklyPlan(nextPlan);
+    setTaskSuccess(`Added "${title}" to your weekly plan.`);
+    event.currentTarget.reset();
+  };
 
   // Handle intake completion (move from intake step to capacity step)
   const handleIntakeComplete = useCallback((completedIntake: ReturnType<typeof loadOnboardingIntake>) => {
@@ -370,11 +430,12 @@ export default function PlanPage() {
           <main className="flex items-center justify-center flex-1 px-6">
             <div className="w-full max-w-2xl">
               <h2 className="font-semibold text-actual mb-4">Your Weekly Plan</h2>
-              {capacity !== null ? (
-                <Card>
-                  <p className="text-muted mb-2">
-                    You have <strong className="text-actual">{capacity}</strong> minutes available each week.
-                  </p>
+              <Card>
+                  {capacity !== null && (
+                    <p className="text-muted mb-2">
+                      You have <strong className="text-actual">{capacity}</strong> minutes available each week.
+                    </p>
+                  )}
                   {(weeklyPlan?.tasks.length ?? 0) > 0 && (
                     <>
                       <h3 className="font-semibold text-actual mb-3">Planned Tasks ({weeklyPlan?.tasks.length})</h3>
@@ -404,24 +465,18 @@ export default function PlanPage() {
                       No tasks planned yet. Add tasks to create your weekly plan.
                     </p>
                   )}
-                </Card>
-              ) : (
-                <p className="text-muted">Calculating your capacity...</p>
-              )}
+              </Card>
 
               {/* In a real implementation, this would be a sophisticated planner UI */}
               {/* For now, we'll show a simple form to add tasks */}
-              <form className="space-y-4" onSubmit={(e) => {
-                e.preventDefault();
-                // In a real app, we would add the task to the weekly plan
-                alert("Task added! (This is a placeholder - in a real app, this would add the task to your plan)");
-              }}>
+              <form className="space-y-4" onSubmit={handleAddTask}>
                 <div className="space-y-3">
                   <Label htmlFor="task-title">
                     Task Title
                   </Label>
                   <Input
                     id="task-title"
+                    name="task-title"
                     type="text"
                     required
                   />
@@ -434,6 +489,7 @@ export default function PlanPage() {
                     </Label>
                     <Input
                       id="task-duration"
+                      name="task-duration"
                       type="number"
                       min="1"
                     />
@@ -445,6 +501,7 @@ export default function PlanPage() {
                     </Label>
                     <select
                       id="task-priority"
+                      name="task-priority"
                       className="w-full px-4 py-2 border border-border-strong rounded-lg focus:ring-2 focus:ring-actual focus:border-actual"
                     >
                       <option value="medium">Medium</option>
@@ -459,6 +516,7 @@ export default function PlanPage() {
                     </Label>
                     <select
                       id="task-day"
+                      name="task-day"
                       className="w-full px-4 py-2 border border-border-strong rounded-lg focus:ring-2 focus:ring-actual focus:border-actual"
                     >
                       <option value="0">Sunday</option>
@@ -478,10 +536,14 @@ export default function PlanPage() {
                   </Label>
                   <textarea
                     id="task-description"
+                    name="task-description"
                     rows={3}
                     className="w-full px-4 py-2 border border-border-strong rounded-lg focus:ring-2 focus:ring-actual focus:border-actual"
                   ></textarea>
                 </div>
+
+                {taskError && <p className="text-danger" role="alert">{taskError}</p>}
+                {taskSuccess && <p className="text-success" role="status" aria-live="polite">{taskSuccess}</p>}
 
                 <div className="flex justify-end space-x-3">
                   <Button
