@@ -1,10 +1,18 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { loadOnboardingIntake, saveOnboardingIntake, createEmptyOnboardingIntake } from '@/lib/onboarding-storage';
-import { loadWeeklyPlan, saveWeeklyPlan, createEmptyWeeklyPlan, isValidWeeklyPlan } from '@/lib/weekly-plan-storage';
+import {
+  addTaskToPlan,
+  createEmptyWeeklyPlan,
+  isValidWeeklyPlan,
+  loadWeeklyPlan,
+  removeTaskFromPlan,
+  saveWeeklyPlan,
+  validateNewTaskInput,
+} from '@/lib/weekly-plan-storage';
 import type { WeeklyPlanTask } from '@/lib/weekly-plan-storage';
 import { computeCapacity, CapacityInputs, CapacityOutput } from '@/engine/capacity';
 import Link from 'next/link';
@@ -30,6 +38,7 @@ export default function PlanPage() {
   const [activeStep, setActiveStep] = useState<'intake' | 'capacity' | 'plan'>('intake');
   const [taskError, setTaskError] = useState<string | null>(null);
   const [taskSuccess, setTaskSuccess] = useState<string | null>(null);
+  const taskListHeadingRef = useRef<HTMLHeadingElement>(null);
 
   // Capacity step state
   const [capacityInputs, setCapacityInputs] = useState<CapacityInputs>({
@@ -94,50 +103,51 @@ export default function PlanPage() {
     }
 
     const formData = new FormData(event.currentTarget);
-    const titleValue = formData.get('task-title');
-    const descriptionValue = formData.get('task-description');
-    const title = typeof titleValue === 'string' ? titleValue.trim() : '';
-    const description = typeof descriptionValue === 'string' ? descriptionValue.trim() : '';
-    const estimatedDurationMinutes = Number(formData.get('task-duration'));
-    const priority = formData.get('task-priority');
-    const plannedDay = Number(formData.get('task-day'));
+    const validation = validateNewTaskInput({
+      title: formData.get('task-title'),
+      description: formData.get('task-description'),
+      estimatedDurationMinutes: Number(formData.get('task-duration')),
+      priority: formData.get('task-priority'),
+      plannedDay: Number(formData.get('task-day')),
+    });
 
-    if (
-      !title ||
-      !Number.isInteger(estimatedDurationMinutes) ||
-      estimatedDurationMinutes < 1 ||
-      (priority !== 'high' && priority !== 'medium' && priority !== 'low') ||
-      !Number.isInteger(plannedDay) ||
-      plannedDay < 0 ||
-      plannedDay > 6
-    ) {
-      setTaskError('Enter a task title, a positive whole-minute duration, a priority, and a day.');
+    if (!validation.valid) {
+      setTaskError(validation.error);
       return;
     }
 
     const task: WeeklyPlanTask = {
       id: crypto.randomUUID(),
-      title,
-      description: description || undefined,
-      estimatedDurationMinutes,
-      priority,
-      plannedDay,
+      ...validation.task,
     };
 
-    const nextPlan = {
-      ...weeklyPlan,
-      tasks: [...weeklyPlan.tasks, task],
-      updatedAt: new Date().toISOString(),
-    };
+    const nextPlan = addTaskToPlan(weeklyPlan, task);
 
-    if (!saveWeeklyPlan(nextPlan)) {
+    if (!nextPlan || !saveWeeklyPlan(nextPlan)) {
       setTaskError('Unable to save your weekly plan. Please try again.');
       return;
     }
 
     setWeeklyPlan(nextPlan);
-    setTaskSuccess(`Added "${title}" to your weekly plan.`);
+    setTaskSuccess(`Added "${task.title}" to your weekly plan.`);
     event.currentTarget.reset();
+  };
+
+  const handleRemoveTask = (taskId: string, taskTitle: string): void => {
+    setTaskError(null);
+    setTaskSuccess(null);
+
+    const nextPlan = removeTaskFromPlan(weeklyPlan, taskId);
+    if (!nextPlan || nextPlan === weeklyPlan) return;
+
+    if (!saveWeeklyPlan(nextPlan)) {
+      setTaskError(`Unable to remove "${taskTitle}". The task is still in your plan.`);
+      return;
+    }
+
+    setWeeklyPlan(nextPlan);
+    setTaskSuccess(`Removed "${taskTitle}" from your weekly plan.`);
+    taskListHeadingRef.current?.focus();
   };
 
   // Handle intake completion (move from intake step to capacity step)
@@ -436,14 +446,20 @@ export default function PlanPage() {
                       You have <strong className="text-actual">{capacity}</strong> minutes available each week.
                     </p>
                   )}
-                  {(weeklyPlan?.tasks.length ?? 0) > 0 && (
-                    <>
-                      <h3 className="font-semibold text-actual mb-3">Planned Tasks ({weeklyPlan?.tasks.length})</h3>
-                      <div className="space-y-3">
-                        {weeklyPlan?.tasks?.map((task) => (
-                          <Card key={task.id} className="p-4">
-                            <div className="flex justify-between items-start mb-2">
-                              <h3 className="font-semibold text-actual">{task.title}</h3>
+                  <h3
+                    ref={taskListHeadingRef}
+                    tabIndex={-1}
+                    className="mb-3 font-semibold text-actual focus:outline-none focus:ring-2 focus:ring-actual focus:ring-offset-2"
+                  >
+                    Planned Tasks ({weeklyPlan?.tasks.length ?? 0})
+                  </h3>
+                  {(weeklyPlan?.tasks.length ?? 0) > 0 ? (
+                    <div className="space-y-3">
+                      {weeklyPlan?.tasks.map((task) => (
+                        <Card key={task.id} className="p-4">
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <div>
+                              <h4 className="font-semibold text-actual">{task.title}</h4>
                               <span className={`px-2 py-1 text-xs rounded-full
                                 ${task.priority === 'high' ? 'bg-error/20 text-error' :
                                   task.priority === 'medium' ? 'bg-warning/20 text-warning' :
@@ -451,16 +467,21 @@ export default function PlanPage() {
                                 {task.priority}
                               </span>
                             </div>
-                            <p className="text-muted text-sm mb-2">{task.estimatedDurationMinutes} min • {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][task.plannedDay]}</p>
-                            {task.description && (
-                              <p className="text-muted">{task.description}</p>
-                            )}
-                          </Card>
-                        )) ?? []}
-                      </div>
-                    </>
-                  )}
-                  {(weeklyPlan?.tasks.length ?? 0) === 0 && (
+                            <button
+                              type="button"
+                              aria-label={`Remove ${task.title}`}
+                              onClick={() => handleRemoveTask(task.id, task.title)}
+                              className="min-h-11 shrink-0 border border-border-strong px-3 text-sm text-actual focus-visible:outline focus-visible:outline-2 focus-visible:outline-actual focus-visible:outline-offset-2"
+                            >
+                              Remove {task.title}
+                            </button>
+                          </div>
+                          <p className="text-muted text-sm mb-2">{task.estimatedDurationMinutes} min • {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][task.plannedDay]}</p>
+                          {task.description && <p className="text-muted">{task.description}</p>}
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
                     <p className="text-muted">
                       No tasks planned yet. Add tasks to create your weekly plan.
                     </p>
