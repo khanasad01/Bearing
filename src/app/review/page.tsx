@@ -171,15 +171,14 @@ export default function ReviewPage() {
   }, []);
 
   useEffect(() => {
-    // Initialize week start dates, then load data for that week
-    const currentWeekStartDate = getWeekStartDate(new Date());
-    setWeekStartDate(currentWeekStartDate);
-
-    const nextWeekStart = new Date(currentWeekStartDate);
-    nextWeekStart.setDate(nextWeekStart.getDate() + 7);
-    setNextWeekStartDate(getWeekStartDate(nextWeekStart));
-
-    loadData(currentWeekStartDate);
+    void Promise.resolve().then(() => {
+      const currentWeekStartDate = getWeekStartDate(new Date());
+      const nextWeekStart = new Date(currentWeekStartDate);
+      nextWeekStart.setDate(nextWeekStart.getDate() + 7);
+      setWeekStartDate(currentWeekStartDate);
+      setNextWeekStartDate(getWeekStartDate(nextWeekStart));
+      return loadData(currentWeekStartDate);
+    });
   }, [loadData]);
 
   // Save the user's answers to the review questions
