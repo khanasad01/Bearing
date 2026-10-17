@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
-import { loadWeeklyPlan, WeeklyPlan, WeeklyPlanTask } from '@/lib/weekly-plan-storage';
+import { startTransition, useEffect, useState } from 'react';
+import { getWeekStartDate, loadWeeklyPlan } from '@/lib/weekly-plan-storage';
+import type { WeeklyPlan, WeeklyPlanTask } from '@/lib/weekly-plan-storage';
 import {
   createEmptyExecutionDayRecord,
   loadExecutionDayRecord,
@@ -58,34 +59,25 @@ function computeSummary(tasks: WeeklyPlanTask[], records: ExecutionTaskRecord[])
 
 export default function ExecutePage() {
   const router = useRouter();
-  const [weekStartDate] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const today = new Date();
-      const day = today.getDay();
-      const diff = today.getDate() - day;
-      const sunday = new Date(today.setDate(diff));
-      return sunday.toISOString().split('T')[0];
-    }
-    return '';
-  });
-
-  const [todayDate] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return new Date().toISOString().split('T')[0];
-    }
-    return '';
-  });
-
-  const [weeklyPlan] = useState<WeeklyPlan | null>(() => {
-    if (typeof window === 'undefined') return null;
-    return loadWeeklyPlan(weekStartDate) ?? null;
-  });
-  const [executionRecord, setExecutionRecord] = useState<ExecutionDayRecord | null>(() => {
-    if (typeof window === 'undefined' || !todayDate) return null;
-    const record = loadExecutionDayRecord(todayDate);
-    return record ?? null;
-  });
+  const [weekStartDate, setWeekStartDate] = useState('');
+  const [todayDate, setTodayDate] = useState('');
+  const [weeklyPlan, setWeeklyPlan] = useState<WeeklyPlan | null>(null);
+  const [executionRecord, setExecutionRecord] = useState<ExecutionDayRecord | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [todayError, setTodayError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const todayDate = new Date().toISOString().split('T')[0];
+    const weekStartDate = getWeekStartDate(new Date());
+
+    startTransition(() => {
+      setTodayDate(todayDate);
+      setWeekStartDate(weekStartDate);
+      setWeeklyPlan(loadWeeklyPlan(weekStartDate));
+      setExecutionRecord(loadExecutionDayRecord(todayDate));
+      setIsLoading(false);
+    });
+  }, []);
 
   const summary = weeklyPlan ? computeSummary(weeklyPlan.tasks, executionRecord?.records ?? []) : null;
 
@@ -158,6 +150,16 @@ export default function ExecutePage() {
   };
 
   const doesRecordExist = !!executionRecord;
+
+  if (isLoading) {
+    return (
+      <main className="min-h-screen bg-paper" aria-busy="true">
+        <div className="max-w-4xl mx-auto px-4 py-8">
+          <p className="text-muted" role="status" aria-live="polite">Loading today&apos;s plan...</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-paper">
