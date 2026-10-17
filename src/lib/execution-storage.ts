@@ -176,3 +176,29 @@ export function createEmptyExecutionDayRecord(
   };
 }
 
+export function updateExecutionTaskRecord(
+  record: ExecutionDayRecord | null,
+  date: string,
+  weekStartDate: string,
+  taskIds: string[],
+  taskId: string,
+  updateTask: (taskRecord: ExecutionTaskRecord) => ExecutionTaskRecord
+): ExecutionDayRecord {
+  const nextRecord = record ?? createEmptyExecutionDayRecord(date, weekStartDate, taskIds);
+  const recordsByTaskId = new Map(nextRecord.records.map(taskRecord => [taskRecord.taskId, taskRecord]));
+
+  for (const plannedTaskId of taskIds) {
+    if (!recordsByTaskId.has(plannedTaskId)) {
+      recordsByTaskId.set(plannedTaskId, { taskId: plannedTaskId, status: 'not-started' });
+    }
+  }
+
+  const taskRecord = recordsByTaskId.get(taskId) ?? { taskId, status: 'not-started' as const };
+  recordsByTaskId.set(taskId, updateTask(taskRecord));
+
+  return {
+    ...nextRecord,
+    records: [...recordsByTaskId.values()],
+  };
+}
+

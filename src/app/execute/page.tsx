@@ -3,8 +3,10 @@
 import { useState } from 'react';
 import { loadWeeklyPlan, WeeklyPlan, WeeklyPlanTask } from '@/lib/weekly-plan-storage';
 import {
+  createEmptyExecutionDayRecord,
   loadExecutionDayRecord,
   saveExecutionDayRecord,
+  updateExecutionTaskRecord,
   ExecutionStatus,
   ExecutionDayRecord,
   ExecutionTaskRecord,
@@ -87,6 +89,22 @@ export default function ExecutePage() {
 
   const summary = weeklyPlan ? computeSummary(weeklyPlan.tasks, executionRecord?.records ?? []) : null;
 
+  const persistRecord = (record: ExecutionDayRecord): void => {
+    if (typeof window === 'undefined' || !todayDate || !saveExecutionDayRecord(record)) {
+      setTodayError('Failed to save today\'s execution record.');
+      return;
+    }
+
+    const savedRecord = loadExecutionDayRecord(todayDate);
+    if (!savedRecord) {
+      setTodayError('Failed to reload today\'s execution record.');
+      return;
+    }
+
+    setExecutionRecord(savedRecord);
+    setTodayError(null);
+  };
+
   const handleSaveRecord = (): void => {
     if (typeof window === 'undefined' || !todayDate || !weeklyPlan) return;
 
@@ -94,6 +112,11 @@ export default function ExecutePage() {
     const records = existing?.records ?? [];
     const existingById = new Map(records.map(r => [r.taskId, r]));
 
+    const emptyRecord = createEmptyExecutionDayRecord(
+      todayDate,
+      weekStartDate,
+      weeklyPlan.tasks.map(task => task.id)
+    );
     const nextRecords: ExecutionTaskRecord[] = weeklyPlan.tasks.map(task => {
       const existing = existingById.get(task.id);
       if (existing) return existing;
@@ -109,17 +132,29 @@ export default function ExecutePage() {
       version: 1,
       date: todayDate,
       weekStartDate,
-      records: nextRecords,
-      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      records: nextRecords.length > 0 ? nextRecords : emptyRecord.records,
+      createdAt: existing?.createdAt ?? emptyRecord.createdAt,
       updatedAt: new Date().toISOString(),
     };
 
-    if (saveExecutionDayRecord(recordToSave)) {
-      setExecutionRecord(recordToSave);
-      setTodayError(null);
-    } else {
-      setTodayError('Failed to save today\'s execution record.');
-    }
+    persistRecord(recordToSave);
+  };
+
+  const handleUpdateTask = (
+    taskId: string,
+    updateTask: (record: ExecutionTaskRecord) => ExecutionTaskRecord
+  ): void => {
+    if (!todayDate || !weeklyPlan) return;
+
+    const nextRecord = updateExecutionTaskRecord(
+      executionRecord,
+      todayDate,
+      weekStartDate,
+      weeklyPlan.tasks.map(task => task.id),
+      taskId,
+      updateTask
+    );
+    persistRecord(nextRecord);
   };
 
   const doesRecordExist = !!executionRecord;
@@ -149,11 +184,11 @@ export default function ExecutePage() {
           </div>
         ) : (
           <>
+            {todayError && (
+              <p className="text-error mb-4" role="alert">{todayError}</p>
+            )}
             {!doesRecordExist && (
               <div className="bg-surface px-6 py-4 mb-6 border border-border-strong">
-                {todayError && (
-                  <p className="text-error mb-4">{todayError}</p>
-                )}
                 <p className="text-muted">No execution record for today yet.</p>
                 <div className="mt-4">
                   <Button
@@ -226,19 +261,16 @@ export default function ExecutePage() {
                         <label className="text-xs text-muted">Actual (min)</label>
                         <input
                           type="number"
+                          step={1}
                           value={actualMinutes}
                           onChange={e => {
                             const val = Number(e.target.value);
-                            const next = Number.isFinite(val) && val >= 0 ? val : 0;
-                            const nextRecord: ExecutionDayRecord = {
-                              ...executionRecord!,
-                              records: executionRecord!.records.map(r =>
-                                r.taskId === task.id
-                                  ? { ...r, actualDurationMinutes: next, status: 'partial' }
-                                  : r
-                              ),
-                            };
-                            setExecutionRecord(nextRecord);
+                            const next = Number.isFinite(val) && val >= 0 ? Math.round(val) : 0;
+                            handleUpdateTask(task.id, record => ({
+                              ...record,
+                              actualDurationMinutes: next,
+                              status: 'partial',
+                            }));
                           }}
                           className="w-24 px-2 py-1 border border-border-strong rounded text-sm"
                           placeholder="0"
@@ -248,13 +280,7 @@ export default function ExecutePage() {
                           value={status}
                           onChange={e => {
                             const val = e.target.value as ExecutionStatus;
-                            const nextRecord = {
-                              ...executionRecord!,
-                              records: executionRecord!.records.map(r =>
-                                r.taskId === task.id ? { ...r, status: val } : r
-                              ),
-                            };
-                            setExecutionRecord(nextRecord);
+                            handleUpdateTask(task.id, record => ({ ...record, status: val }));
                           }}
                           className="px-2 py-1 border border-border-strong rounded text-sm"
                         >
