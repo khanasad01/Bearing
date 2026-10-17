@@ -1,4 +1,27 @@
 @import "tailwindcss";
+@config "../../tailwind.config.ts";
+@import "../design/tokens.css";
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-plan: var(--plan);
+  --color-plan-soft: var(--plan-soft);
+  --color-actual: var(--actual);
+  --color-insight: var(--insight);
+  --color-insight-soft: var(--insight-soft);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-ember-text: var(--ember-text);
+  --color-ember-soft: var(--ember-soft);
+  --font-display: var(--font-display);
+}
+
 
 :root {
   --background: var(--paper);
@@ -9,6 +32,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-ui);
+  --font-display: var(--font-display);
   --font-mono: var(--font-mono);
 }
 
