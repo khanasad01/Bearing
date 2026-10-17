@@ -26,6 +26,82 @@ export type WeeklyPlanTask = z.infer<typeof WeeklyPlanTaskSchema>;
 export type WeeklyPlanV1 = z.infer<typeof WeeklyPlanV1Schema>;
 export type WeeklyPlan = WeeklyPlanV1;
 
+export interface NewTaskInput {
+  title: unknown;
+  description?: unknown;
+  estimatedDurationMinutes: unknown;
+  priority: unknown;
+  plannedDay: unknown;
+}
+
+export type NewTaskValidationResult =
+  | { valid: true; task: Omit<WeeklyPlanTask, 'id'> }
+  | { valid: false; error: string };
+
+export function validateNewTaskInput(input: NewTaskInput): NewTaskValidationResult {
+  const title = typeof input.title === 'string' ? input.title.trim() : '';
+  const description = typeof input.description === 'string' ? input.description.trim() : '';
+  const estimatedDurationMinutes = input.estimatedDurationMinutes;
+  const priority = input.priority;
+  const plannedDay = input.plannedDay;
+
+  if (
+    !title ||
+    typeof estimatedDurationMinutes !== 'number' ||
+    !Number.isInteger(estimatedDurationMinutes) ||
+    estimatedDurationMinutes < 1 ||
+    (priority !== 'high' && priority !== 'medium' && priority !== 'low') ||
+    typeof plannedDay !== 'number' ||
+    !Number.isInteger(plannedDay) ||
+    plannedDay < 0 ||
+    plannedDay > 6
+  ) {
+    return {
+      valid: false,
+      error: 'Enter a task title, a positive whole-minute duration, a priority, and a day.',
+    };
+  }
+
+  return {
+    valid: true,
+    task: {
+      title,
+      description: description || undefined,
+      estimatedDurationMinutes,
+      priority,
+      plannedDay,
+    },
+  };
+}
+
+export function addTaskToPlan(
+  plan: WeeklyPlan | null,
+  task: WeeklyPlanTask,
+  updatedAt: string = new Date().toISOString()
+): WeeklyPlan | null {
+  if (!plan) return null;
+
+  return {
+    ...plan,
+    tasks: [...plan.tasks, task],
+    updatedAt,
+  };
+}
+
+export function removeTaskFromPlan(
+  plan: WeeklyPlan | null,
+  taskId: string,
+  updatedAt: string = new Date().toISOString()
+): WeeklyPlan | null {
+  if (!plan || !plan.tasks.some(task => task.id === taskId)) return plan;
+
+  return {
+    ...plan,
+    tasks: plan.tasks.filter(task => task.id !== taskId),
+    updatedAt,
+  };
+}
+
 const STORAGE_KEY_BASE = "bearing.weekly-plan.v1";
 function getStorageKey(weekStartDate: string): string {
   return `${STORAGE_KEY_BASE}.${weekStartDate}`;
